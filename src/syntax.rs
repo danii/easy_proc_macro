@@ -1,7 +1,11 @@
 use quote::{ToTokens, quote};
-use syn::{parse::{Parse, ParseStream, Parser}, punctuated::Punctuated, token::{Colon, FatArrow, Semi}, Ident, ItemMacro, ItemMacro2, Result};
+use syn::{parse::{Parse, ParseStream, Parser}, punctuated::Punctuated, token::{Comma, Colon, FatArrow, Semi}, Ident, ItemMacro, ItemMacro2, Result};
 use proc_macro2::{Delimiter, Group, Punct, Spacing, TokenStream, TokenTree};
 
+/// Steps the `input` into a group that is delimited by `delimiter`. Returns an
+/// error if the next item in `input` does not match.
+// Currently, this implementation panics, as I decided to hold off on doing
+// error handling.
 fn unwrap_delimiter(input: ParseStream, delimiter: Delimiter)
 		-> Result<TokenStream> {
 	input.step(|cursor| {
@@ -15,6 +19,11 @@ fn unwrap_delimiter(input: ParseStream, delimiter: Delimiter)
 	})
 }
 
+/// Steps the `input` into a group that is delimited by anything (except
+/// [Delimiter::None]). Returns an error if the next item in `input` does not
+/// match.
+// Currently, this implementation panics, as I decided to hold off on doing
+// error handling.
 fn unwrap_any_delimiter(input: ParseStream)
 		-> Result<TokenStream> {
 	input.step(|cursor| {
@@ -28,6 +37,7 @@ fn unwrap_any_delimiter(input: ParseStream)
 	})
 }
 
+/// Represents a macro, whether it be public or private, modern or legacy.
 pub struct MacroData {
 	pub modern: bool,
 	pub public: bool,
@@ -59,11 +69,10 @@ impl Parse for MacroData {
 			},
 			Err(_) => {
 				let item = input.parse::<ItemMacro>()?;
-				let rules = Punctuated::<LegacyRule, Semi>::parse_terminated
-					.parse2(item.mac.tokens)?;
+				let rules = Rule::parse_multiple_legacy.parse2(item.mac.tokens)?;
 
 				let name = item.ident.expect("bruh");
-				let rules = rules.into_iter().map(|rule| rule.0).collect();
+				let rules = rules.into_iter().collect();
 				let public = item.attrs.iter()
 					.any(|attr| {
 						attr.path.segments.last()
@@ -76,6 +85,7 @@ impl Parse for MacroData {
 	}
 }
 
+/// Represents one of a macro's pattern rules.
 #[derive(Debug)]
 pub struct Rule {
 	pub matcher: TokenStream,
@@ -94,23 +104,54 @@ impl ToTokens for Rule {
 }
 
 impl Rule {
-	fn parse_legacy(input: ParseStream) -> Result<Self> {
+	/// Parses a modern macro's rules. As far as the rule goes, this function has
+	/// the same semantics as [parse]. This function expects rules to be delimited
+	/// by `,`s, the way modern macro rules are formed.
+	///
+	/// [parse]: Self::parse
+	pub fn parse_multiple_modern(input: ParseStream)
+			-> Result<Punctuated<Self, Comma>> {
+		Punctuated::<Self, Comma>::parse_terminated_with(input, Self::parse)
+	}
+
+	/// Parses a legacy macro's rules. As far as the rule goes, this function has
+	/// the same semantics as [parse]. This function expects rules to be delimited
+	/// by `;`s, the way legacy macro rules are formed.
+	///
+	/// [parse]: Self::parse
+	pub fn parse_multiple_legacy(input: ParseStream)
+			-> Result<Punctuated<Self, Semi>> {
+		Punctuated::<Self, Semi>::parse_terminated_with(input, Self::parse)
+	}
+
+	/// Parses a modern one pattern macro's rule. This does not parse a fat arrow,
+	/// and expects the matcher to be delimited by parenthesis, and the
+	/// transcriber to be delimited by braces. For rules of modern or legacy
+	/// macros, [parse] should be used instead.
+	///
+	/// [parse]: Self::parse
+	pub fn parse_one(input: ParseStream) -> Result<Self> {
+		let matcher = unwrap_delimiter(input, Delimiter::Parenthesis)?;
+		let transcriber = unwrap_delimiter(input, Delimiter::Brace)?;
+		Ok(Self {matcher, transcriber})
+	}
+
+	/// Parses any rule, with any delimiter for it's matcher and transcriber
+	/// groups. For rules of modern one pattern macros, [parse_one] should be used
+	/// instead. This only parses one rule.
+	///
+	/// [parse_one]: Self::parse_one
+	pub fn parse(input: ParseStream) -> Result<Self> {
 		let matcher = unwrap_any_delimiter(input)?;
 		input.parse::<FatArrow>()?;
 		let transcriber = unwrap_any_delimiter(input)?;
-
 		Ok(Self {matcher, transcriber})
 	}
 }
 
-struct LegacyRule(Rule);
-
-impl Parse for LegacyRule {
-	fn parse(input: ParseStream) -> Result<Self> {
-		Rule::parse_legacy(input).map(Self)
-	}
-}
-
+/// Represents the argument syntax passed to the [call_macro_code] macro.
+///
+/// [call_macro_code]: crate::call_macro_code!
 pub struct Arguments {
 	pub token_arguments: Vec<Argument>,
 	pub code: TokenStream
@@ -131,6 +172,10 @@ impl Parse for Arguments {
 	}
 }
 
+/// Represents a single argument from a macro rule to be passed to the
+/// [call_macro_code] macro.
+///
+/// [call_macro_code]: crate::call_macro_code!
 pub struct Argument {
 	pub tokens: TokenStream,
 	pub name: Box<str>,
@@ -151,11 +196,17 @@ impl Parse for Argument {
 	}
 }
 
+/// Represents the possible arguments a macro can match against.
+#[non_exhaustive]
 pub enum CaptureType {
+	/// An `ident`.
 	Ident,
+	/// A `literal`.
 	Literal,
+	/// A `path`.
 	Path,
-	Type
+	/// A `ty`.
+	Ty
 }
 
 impl CaptureType {
@@ -164,7 +215,7 @@ impl CaptureType {
 			"ident" => Self::Ident,
 			"literal" => Self::Literal,
 			"path" => Self::Path,
-			"ty" => Self::Type,
+			"ty" => Self::Ty,
 			_ => panic!()
 		}
 	}
@@ -174,7 +225,7 @@ impl CaptureType {
 			Self::Ident => "ident",
 			Self::Literal => "literal",
 			Self::Path => "path",
-			Self::Type => "ty"
+			Self::Ty => "ty"
 		}
 	}
 }
@@ -185,7 +236,7 @@ impl Parse for CaptureType {
 			"ident" => Self::Ident,
 			"literal" => Self::Literal,
 			"path" => Self::Path,
-			"ty" => Self::Type,
+			"ty" => Self::Ty,
 			_ => panic!()
 		})
 	}

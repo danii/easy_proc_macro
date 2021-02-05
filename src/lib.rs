@@ -1,3 +1,5 @@
+//! Write meta code with ease, no external crates required.
+
 use self::syntax::{CaptureType, MacroData, Rule};
 use itertools::Itertools;
 use proc_macro::TokenStream as Stream;
