@@ -1,0 +1,15 @@
+[package]
+name = "easy_proc_macro"
+version = "0.1.0"
+authors = ["Daniel Conley <himself@danii.dev>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+itertools = "0.10.0"
+proc-macro2 = "1.0.24"
+quote = "1.0.8"
+syn = {version = "1.0.60", features = ["full"]}
+tempfile = "3.2.0"
