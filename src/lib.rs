@@ -1,18 +1,31 @@
 //! Write meta code with ease, no external crates required.
 
-use self::syntax::{CaptureType, MacroData, Rule};
+#![cfg_attr(feature = "nightly", feature(decl_macro, proc_macro_diagnostic, proc_macro_span))]
+
+use self::{
+	syntax::{Arguments, CaptureType, MacroData, Rule},
+	compile::basic_compile,
+	util::error_tokens
+};
 use itertools::Itertools;
 use proc_macro::TokenStream as Stream;
-use proc_macro2::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenTree, TokenStream};
+use proc_macro2::{
+	Delimiter, Group, Ident, Punct, Spacing, Span, TokenTree, TokenStream
+};
 use quote::{ToTokens, quote};
-use std::iter::Iterator;
+use std::{io::Read, iter::Iterator, net::TcpListener, process::Command};
 use syn::parse::{Parse, Parser};
+use tempfile::tempdir;
 
-mod bridge;
+mod compile;
 mod syntax;
+mod util;
 
 #[proc_macro_attribute]
 pub fn easy_proc_macro(_: Stream, input: Stream) -> Stream {
+	#[cfg(feature = "trace")]
+	eprintln!("!!!!! #[easy_proc_macro] invoked with\n{}\n...", input.clone());
+
 	let mut data = MacroData::parse.parse(input).expect("error");
 
 	data.rules.iter_mut().for_each(|rule| {
@@ -132,6 +145,9 @@ pub fn easy_proc_macro(_: Stream, input: Stream) -> Stream {
 		*transcriber = tokens.into_iter().collect();
 	});
 
+	#[cfg(feature = "trace")]
+	eprintln!("!!!!! that #[easy_proc_macro] call was expanded to\n{}\n...", data.to_token_stream());
+
 	data.into_token_stream().into()
 }
 
@@ -139,6 +155,25 @@ pub fn easy_proc_macro(_: Stream, input: Stream) -> Stream {
 #[doc(hidden)]
 #[proc_macro]
 pub fn call_macro_code(input: Stream) -> Stream {
-	let args = crate::syntax::Arguments::parse.parse(input).expect("error");
-	crate::bridge::run(args).parse().expect("error")
+	#[cfg(feature = "trace")]
+	eprintln!("!!!!! call_macro_code! invoked with\n{}\n...", input.clone());
+
+	let arguments = Arguments::parse.parse(input).expect("error");
+
+	let dir = tempdir().unwrap();
+	let bin = dir.path().join("bin");
+
+	match basic_compile(arguments, &bin) {
+		Err(error) => return error_tokens(error).into(),
+		Ok(()) => ()
+	}
+
+	let token_server = TcpListener::bind("[::1]:32842").expect("call_macro_code error");
+	let mut plugin = Command::new(bin).spawn().expect("call_macro_code error");
+	plugin.wait().expect("call_macro_code error");
+
+	let mut socket = token_server.incoming().next().expect("call_macro_code error").expect("call_macro_code error");
+	let mut tokens = String::new();
+	socket.read_to_string(&mut tokens).expect("call_macro_code error");
+	tokens.parse().expect("call_macro_code error")
 }

@@ -109,6 +109,7 @@ impl Rule {
 	/// by `,`s, the way modern macro rules are formed.
 	///
 	/// [parse]: Self::parse
+	#[allow(dead_code)]
 	pub fn parse_multiple_modern(input: ParseStream)
 			-> Result<Punctuated<Self, Comma>> {
 		Punctuated::<Self, Comma>::parse_terminated_with(input, Self::parse)
@@ -130,6 +131,7 @@ impl Rule {
 	/// macros, [parse] should be used instead.
 	///
 	/// [parse]: Self::parse
+	#[allow(dead_code)]
 	pub fn parse_one(input: ParseStream) -> Result<Self> {
 		let matcher = unwrap_delimiter(input, Delimiter::Parenthesis)?;
 		let transcriber = unwrap_delimiter(input, Delimiter::Brace)?;
