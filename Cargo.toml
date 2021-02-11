@@ -2,6 +2,7 @@
 name = "easy_proc_macro"
 version = "0.1.0"
 authors = ["Daniel Conley <himself@danii.dev>"]
+license = "MIT"
 description = "Rust's last proc-macro crate."
 repository = "https://github.com/danii/easy_proc_macro.git"
 edition = "2018"
