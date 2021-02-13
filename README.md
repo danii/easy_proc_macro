@@ -2,6 +2,12 @@ Easy Procedural Macro
 =====================
 _**Rust's last proc-macro crate.**_
 
+![](https://img.shields.io/crates/d/easy_proc_macro?style=for-the-badge) ![](https://img.shields.io/tokei/lines/github/danii/easy_proc_macro?style=for-the-badge) ![](https://img.shields.io/crates/v/easy_proc_macro?label=version&style=for-the-badge) ![](https://img.shields.io/badge/compiler%20version-stable_1.45.0-007EC6?style=for-the-badge)
+<br>
+[![](https://img.shields.io/badge/crates.io-E6B14C?style=for-the-badge&logo=rust&logoColor=000000)](https://crates.io/crates/easy_proc_macro) [![](https://img.shields.io/badge/lib.rs-282A36?style=for-the-badge&logo=rust)](https://lib.rs/crates/easy_proc_macro) [![](https://img.shields.io/badge/github.com-24292E?style=for-the-badge&logo=github)](https://github.com/danii/easy_proc_macro) [![](https://img.shields.io/badge/sponsor_me-FF69B4?style=for-the-badge&logo=github%20sponsors&logoColor=FFFFFF)](https://github.com/sponsors/danii) [![](https://img.shields.io/badge/telegram_group-26A5E4?style=for-the-badge&logo=telegram)](https://t.me/danii_hangout)
+
+<!--![](https://img.shields.io/badge/dynamic/json?label=total%20size&query=%24.versions%5B%3A1%5D.crate_size&suffix=%20bytes&url=https%3A%2F%2Fcrates.io%2Fapi%2Fv1%2Fcrates%2Feasy_proc_macro?cacheSeconds=86400&style=for-the-badge)-->
+
 Easy Procedural Macro is a procedural macro crate that, well, allows you to create procedural macros without having to create a whole dedicated crate for the macros. Hence why this is Rust's last proc-macro crate.
 
 Getting started is fairly easy. Just slap `#[easy_proc_macro::easy_proc_macro]` (or import it first if you prefer) ontop of any old macro definition, and boom, it becomes a procedural macro. Not much has changed on the surface, but your macro has just gained _a super power_.
