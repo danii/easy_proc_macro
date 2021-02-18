@@ -5,6 +5,8 @@ authors = ["Daniel Conley <himself@danii.dev>"]
 license = "MIT"
 description = "Rust's last proc-macro crate."
 repository = "https://github.com/danii/easy_proc_macro.git"
+categories = ["development-tools::procedural-macro-helpers"]
+keywords = ["macro", "easy", "hack", "proc-macro", "procedural"]
 edition = "2018"
 
 [lib]
