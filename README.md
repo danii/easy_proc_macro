@@ -8,13 +8,13 @@ _**Rust's last proc-macro crate.**_
 
 <!--![](https://img.shields.io/badge/dynamic/json?label=total%20size&query=%24.versions%5B%3A1%5D.crate_size&suffix=%20bytes&url=https%3A%2F%2Fcrates.io%2Fapi%2Fv1%2Fcrates%2Feasy_proc_macro?cacheSeconds=86400&style=for-the-badge)-->
 
-Easy Procedural Macro is a procedural macro crate that, well, allows you to create procedural macros without having to create a whole dedicated crate for the macros. Hence why this is Rust's last proc-macro crate.
+Easy Procedural Macro is a procedural macro that allows you to create procedural macros without having to make your own `proc-macro = true` crate.
 
-Getting started is fairly easy. Just slap `#[easy_proc_macro::easy_proc_macro]` (or import it first if you prefer) ontop of any old macro definition, and boom, it becomes a procedural macro. Not much has changed on the surface, but your macro has just gained _a super power_.
+Getting started is fairly easy. Just slap `#[easy_proc_macro::easy_proc_macro]` ontop of any old macro definition, and boom, it becomes a procedural macro. Not much might have changed on the surface, but your macro has just gained _a super power_.
 
-That super power being token manipulation blocks! Adding a token manipulation block to your macro is pretty straight forward. Just write a normal block with a dollar sign in front as if it was some special macro syntax, like so; `${/* ... */}`. The code inside these blocks will be ran at _compile time_, and operate upon Rust's token's directly, allowing your macros to do a whole lot more than just advanced `Ctrl + C` + `Ctrl + V`.
+That super power being _token manipulation blocks_! Adding a token manipulation block to your macro is pretty straight forward. Just write a normal block with a dollar sign in front as if it was some special macro syntax, like so; `${/* ... */}`. Code inside these blocks will be ran at _compile time_, and operate upon Rust's token's directly, allowing your macros to do a whole lot more than just advanced `Ctrl + C` + `Ctrl + V`.
 
-Tokens you access inside a token manipulation block will be a string, allowing you to modify the tokens to your heart's extent. The value a token manipulation block resolves to must implement [`ToString`], or a `String` or `&str`. The value is what the token manipulation block will expand too.
+Tokens you access inside a token manipulation block will be a string representation, allowing you to modify them to your heart's extent. The value a token manipulation block resolves to must implement [`ToString`], or be a `String` or `&str` (both implement `ToString`). The returned value is what the token manipulation block will expand too.
 
 Nightly Only Features
 ---------------------
