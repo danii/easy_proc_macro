@@ -1,6 +1,7 @@
 use easy_proc_macro::easy_proc_macro;
 
 #[easy_proc_macro]
+#[macro_export]
 macro_rules! my_stringify {
 	($name:ident, $data:literal) => {
 		let $name = ${

@@ -10,7 +10,6 @@ macro_rules! hygine {
 
 	($specified:ident) => {
 		${
-			an_item();
 			format!("let {} = true;", $specified)
 		}
 	}
@@ -24,6 +23,4 @@ fn main() {
 	let pass_through = false;
 	hygine!(pass_through);
 	println!("Pass through is {:?}.", pass_through);
-	
-	//slow
 }
