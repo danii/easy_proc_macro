@@ -12,7 +12,9 @@ macro multiple {
 
 #[easy_proc_macro]
 macro single($lol:ident) {
-
+	${
+		"\"a smooth criminal\""
+	}
 }
 
 fn main() {

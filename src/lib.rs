@@ -95,12 +95,16 @@
 //! [`proc_macro_diagnostic`]: https://github.com/rust-lang/rust/issues/54140
 //! [internal]: ../src/easy_proc_macro/lib.rs.html#251
 
-#![cfg_attr(feature = "nightly", feature(decl_macro, proc_macro_diagnostic, proc_macro_span))]
+#![cfg_attr(
+	feature = "nightly",
+	feature(decl_macro, proc_macro_diagnostic, proc_macro_span,
+		type_alias_impl_trait)
+)]
 
 use self::{
 	syntax::{Arguments, CaptureType, MacroData, Rule},
 	compile::basic_compile,
-	util::error_tokens
+	util::{FlatTokenIterExt, FlatTokenTree, TokenStreamExt, error_tokens}
 };
 use itertools::Itertools;
 use proc_macro::TokenStream as Stream;
@@ -131,12 +135,13 @@ pub fn easy_proc_macro(_: Stream, input: Stream) -> Stream {
 	data.rules.iter_mut().for_each(|rule| {
 		let Rule {matcher, transcriber} = rule;
 
-		let captures = matcher.clone().into_iter()
+		let captures = matcher.clone()
+			.tree_flatten()
 			.tuple_windows::<(_, _, _, _)>()
 			.filter_map(|values| match values {
 				(
-					TokenTree::Punct(a), TokenTree::Ident(b),
-					TokenTree::Punct(c), TokenTree::Ident(d)
+					FlatTokenTree::Punct(a), FlatTokenTree::Ident(b),
+					FlatTokenTree::Punct(c), FlatTokenTree::Ident(d)
 				) if a.to_string() == "$" && c.to_string() == ":" => Some((
 					b.to_string().into_boxed_str(),
 					CaptureType::from(&d.to_string())
@@ -154,51 +159,11 @@ pub fn easy_proc_macro(_: Stream, input: Stream) -> Stream {
 					tokens.pop();
 
 					let code = group.stream();
-					let captures = code.clone().into_iter()
-						// TODO: Fix flat map nonsense...
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
-						.flat_map(|token| match token {
-							TokenTree::Group(group) => group.stream(),
-							token => token.into()
-						})
+					let captures = code.clone()
+						.tree_flatten()
 						.tuple_windows::<(_, _)>()
 						.filter_map(|values| match values {
-							(TokenTree::Punct(a), TokenTree::Ident(b))
+							(FlatTokenTree::Punct(a), FlatTokenTree::Ident(b))
 									if a.as_char() == '$' =>
 								Some(b.to_string().into_boxed_str()),
 							_ => None
@@ -218,19 +183,10 @@ pub fn easy_proc_macro(_: Stream, input: Stream) -> Stream {
 						].into_iter().collect::<TokenStream>())
 						.collect::<TokenStream>();
 
-					// TODO: Fix? Idk?
-					fn map(input: TokenStream) -> TokenStream {
-						input.into_iter().map(|token| match token {
-							TokenTree::Group(group) =>
-								Group::new(group.delimiter(), map(group.stream())).into(),
-							token => token
-						}).filter(|token| match token {
-							TokenTree::Punct(punct) if punct.as_char() == '$' => false,
-							_ => true
-						}).collect()
-					}
-
-					let code = map(code);
+					let code = code.tree_filter(&mut |token| match token {
+						FlatTokenTree::Punct(punct) if punct.as_char() == '$' => false,
+						_ => true
+					}).expand().expect("mismatched groupings");
 
 					tokens.extend(quote! {
 						::easy_proc_macro::call_macro_code!(

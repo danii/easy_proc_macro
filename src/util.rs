@@ -1,4 +1,13 @@
-use std::{iter::Sum, ops::{Add, Sub}};
+use itertools::Itertools;
+use proc_macro2::{
+	Delimiter, Group, Ident, Literal, Punct, Span, TokenStream, TokenTree
+};
+use std::{
+	convert::TryFrom,
+	hint::unreachable_unchecked,
+	iter::{Filter, Sum},
+	ops::{Add, Sub}
+};
 
 #[cfg(feature = "nightly")]
 mod nightly {
@@ -238,6 +247,10 @@ impl Sub for LineColumnOffset {
 	}
 }
 
+/// Converts a singular iterator into two iterators.
+///
+/// The first (left) iterator yields every odd element, where the second (right)
+/// iterator yields every even element.
 pub fn alternate<I, T>(iterator: I)
 		-> (impl Iterator<Item=T> + Clone, impl Iterator<Item=T> + Clone)
 		where I: Iterator<Item=T> + Clone {
@@ -254,4 +267,200 @@ pub fn alternate<I, T>(iterator: I)
 			second_alternate
 		})
 	)
+}
+
+#[derive(Clone)]
+pub enum FlatTokenTree {
+	Opening(Delimiter, Span),
+	Closing(Delimiter, Span),
+	Ident(Ident),
+	Punct(Punct),
+	Literal(Literal)
+}
+
+impl TryFrom<TokenTree> for FlatTokenTree {
+	type Error = Group;
+
+	fn try_from(value: TokenTree) -> Result<Self, Group> {
+		Ok(match value {
+			TokenTree::Group(group) => return Err(group),
+			TokenTree::Ident(ident) => Self::Ident(ident),
+			TokenTree::Literal(literal) => Self::Literal(literal),
+			TokenTree::Punct(punct) => Self::Punct(punct)
+		})
+	}
+}
+
+impl From<Ident> for FlatTokenTree {
+	fn from(ident: Ident) -> Self {
+		Self::Ident(ident)
+	}
+}
+
+impl From<Literal> for FlatTokenTree {
+	fn from(literal: Literal) -> Self {
+		Self::Literal(literal)
+	}
+}
+
+impl From<Punct> for FlatTokenTree {
+	fn from(punct: Punct) -> Self {
+		Self::Punct(punct)
+	}
+}
+
+pub trait FlatTokenIterExt: Iterator<Item=FlatTokenTree> + Sized {
+	fn expand(self) -> Result<TokenStream, Option<(Delimiter, Span)>>;
+}
+
+impl<T> FlatTokenIterExt for T
+		where T: Iterator<Item=FlatTokenTree> {
+	fn expand(self) -> Result<TokenStream, Option<(Delimiter, Span)>> {
+		#[cfg_attr(not(feature = "nightly"), allow(unused_variables))]
+		fn read_group(iter: &mut dyn Iterator<Item=FlatTokenTree>,
+				delimiter: Delimiter, span_open: Span)
+					-> Result<Group, Option<(Delimiter, Span)>> {
+			let mut span_close = None;
+
+			let stream = iter
+				.batching(|iter| match iter.next()? {
+					FlatTokenTree::Opening(delimiter, span) =>
+						Some(read_group(iter, delimiter, span).map(TokenTree::Group)),
+					FlatTokenTree::Closing(delimiter, span) =>
+						Some(Err(Some((delimiter, span)))),
+					FlatTokenTree::Ident(ident) =>
+						Some(Ok(TokenTree::Ident(ident))),
+					FlatTokenTree::Literal(literal) =>
+						Some(Ok(TokenTree::Literal(literal))),
+					FlatTokenTree::Punct(punct) =>
+						Some(Ok(TokenTree::Punct(punct)))
+				})
+				.filter(|token| match token {
+					Err(Some((closing, span))) if &delimiter == closing => {
+						span_close = Some(*span);
+						false
+					},
+					_ => true
+				})
+				.try_collect();
+
+			match (stream, span_close) {
+				#[cfg(feature = "nightly")]
+				(Ok(stream), Some(span_close)) => {
+					let mut group = Group::new(delimiter, stream);
+					let span = span_open.unwrap().join(span_close.unwrap()).unwrap();
+					group.set_span(span.into());
+					Ok(group)
+				},
+				#[cfg(not(feature = "nightly"))]
+				(Ok(stream), Some(_)) =>
+					Ok(Group::new(delimiter, stream)),
+				(Err(error), _) => Err(error),
+				(_, None) => Err(None)
+			}
+		}
+
+		self
+			.into_iter()
+			.batching(|iter| match iter.next()? {
+				FlatTokenTree::Opening(delimiter, span) =>
+					Some(read_group(iter, delimiter, span).map(TokenTree::Group)),
+				FlatTokenTree::Closing(delimiter, span) =>
+					Some(Err(Some((delimiter, span)))),
+				FlatTokenTree::Ident(ident) =>
+					Some(Ok(TokenTree::Ident(ident))),
+				FlatTokenTree::Literal(literal) =>
+					Some(Ok(TokenTree::Literal(literal))),
+				FlatTokenTree::Punct(punct) =>
+					Some(Ok(TokenTree::Punct(punct)))
+			})
+			.try_collect()
+	}
+}
+
+pub trait TokenStreamExt: IntoIterator<Item=TokenTree> + Sized {
+	// GATs when?
+	// A lot of this boilerplate could've been mitigated with GATs...
+
+	fn tree_find<P>(self, predicate: &mut P) -> Option<TokenTree>
+		where P: FnMut(&TokenTree) -> bool;
+	fn tree_filter<P>(self, predicate: &mut P)
+		-> Filter<Flatten<<Self as IntoIterator>::IntoIter>, &mut P>
+			where P: FnMut(&FlatTokenTree) -> bool;
+	fn tree_flatten(self)
+		-> Flatten<<Self as IntoIterator>::IntoIter>;
+}
+
+impl<T> TokenStreamExt for T
+		where T: IntoIterator<Item=TokenTree>, T::IntoIter: 'static {
+	fn tree_find<P>(self, predicate: &mut P) -> Option<TokenTree>
+			where P: FnMut(&TokenTree) -> bool {
+		self.into_iter().fold(None, |result, token| match (result, token) {
+			(Some(result), _) => Some(result),
+			(_, TokenTree::Group(group)) =>
+				group.stream().tree_find(predicate),
+			(_, token) => match predicate(&token) {
+				true => Some(token),
+				false => None
+			}
+		})
+	}
+
+	fn tree_filter<P>(self, predicate: &mut P)
+			-> Filter<Flatten<<Self as IntoIterator>::IntoIter>, &mut P>
+				where P: FnMut(&FlatTokenTree) -> bool {
+		self
+			.tree_flatten()
+			.filter(predicate)
+	}
+
+	fn tree_flatten(self) -> Flatten<<Self as IntoIterator>::IntoIter> {
+		Flatten::new(self.into_iter())
+	}
+}
+
+pub struct Flatten<I> {
+	iter: I,
+	group: Option<(
+		Box<Flatten<<TokenStream as IntoIterator>::IntoIter>>,
+		Group
+	)>
+}
+
+impl<I> Flatten<I> {
+	fn new(iter: I) -> Self {
+		Self {iter, group: None}
+	}
+}
+
+impl<I> Iterator for Flatten<I>
+		where I: Iterator<Item=TokenTree> {
+	type Item = FlatTokenTree;
+
+	fn next(&mut self) -> Option<FlatTokenTree> {
+		Some(match &mut self.group {
+			Some((inner, _)) => inner.next().unwrap_or_else(|| {
+				// SAFETY: We just checked this was Some.
+				let (_, group) = self.group.as_mut()
+					.unwrap_or_else(|| unsafe {unreachable_unchecked()});
+
+				let (delimiter, span_close) = (group.delimiter(), group.span_close());
+				self.group = None;
+				FlatTokenTree::Closing(delimiter, span_close)
+			}),
+			None => match self.iter.next() {
+				Some(token) => match FlatTokenTree::try_from(token) {
+					Ok(token) => token,
+					Err(group) => {
+						let iter = Box::new(Flatten::new(group.stream().into_iter()));
+
+						let (delimiter, span_open) = (group.delimiter(), group.span_open());
+						self.group = Some((iter, group));
+						FlatTokenTree::Opening(delimiter, span_open)
+					}
+				}
+				None => return None
+			}
+		})
+	}
 }

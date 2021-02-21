@@ -1,4 +1,6 @@
 use self::super::super::util::LineColumnOffset;
+#[cfg(feature = "nightly")]
+use self::super::super::util::TokenStreamExt;
 use serde::{
 	de::{Deserializer, Error, IgnoredAny, MapAccess, Visitor},
 	Deserialize
@@ -40,7 +42,7 @@ fn token_stream_find(code: Stream,
 
 impl<'d> Lint<'d> {
 	#[cfg(feature = "nightly")]
-	pub fn to_spanned_lint(self, raw_code: TokenStream,
+	pub fn to_spanned_lint(self, code: TokenStream,
 			lint_offset: LineColumnOffset) -> SpannedLint<'d> {
 		use itertools::{Either, Itertools};
 		use std::hint::unreachable_unchecked;
@@ -50,14 +52,13 @@ impl<'d> Lint<'d> {
 
 		let mut code_offset = None;
 		let Self {message, code: error_code, level, spans, children} = self;
-		let code: Stream = raw_code.clone().into();
 
 		let (spans, raw_spans) = spans.into_iter()
 			.partition_map::<Vec<Option<Span>>, Vec<_>, _, _, _>(|raw_span| {
 				#[cfg(feature = "trace")]
 				eprintln!("> Finding a proper span for raw_span ({:?}..{:?})...\n\traw_span: {:?}", (raw_span.start() - lint_offset).expect("trace error"), (raw_span.end() - lint_offset).expect("trace error"), raw_span);
-				let start = match token_stream_find(code.clone(), &mut |token| {
-					let span: LineColumnOffset = token.span().start().into();
+				let start = match code.clone().tree_find(&mut |token| {
+					let span: LineColumnOffset = token.span().unwrap().start().into();
 					let &mut code_offset = code_offset.get_or_insert(span);
 					let span = (span - code_offset).expect("error #12");
 					let mut raw_span = (raw_span.start() - lint_offset)
@@ -76,8 +77,8 @@ impl<'d> Lint<'d> {
 
 				#[cfg(feature = "trace")]
 				eprintln!("> '{}' starts at the required location!", start);
-				let end = match token_stream_find(code.clone(), &mut |token| {
-					let span: LineColumnOffset = token.span().end().into();
+				let end = match code.clone().tree_find(&mut |token| {
+					let span: LineColumnOffset = token.span().unwrap().end().into();
 					// SAFETY: If there are no tokens, this never gets ran, and if there
 					// are, the previous find should have set it.
 					let &code_offset = code_offset.as_ref()
@@ -110,7 +111,7 @@ impl<'d> Lint<'d> {
 			spans: spans.into_iter().collect::<Option<Vec<_>>>()
 				.expect("bad spans?"),
 			children: children.into_iter()
-				.map(|child| child.to_spanned_lint(raw_code.clone(), lint_offset))
+				.map(|child| child.to_spanned_lint(code.clone(), lint_offset))
 					.collect()
 		}
 	}
